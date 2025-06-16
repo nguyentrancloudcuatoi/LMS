@@ -1,0 +1,118 @@
+@import url('https://fonts.googleapis.com/css2?family=Roboto:ital,wght@0,100;0,300;0,400;0,500;0,700;0,900;1,100;1,300;1,400;1,500;1,700;1,900&display=swap');
+@import url('https://unpkg.com/@fullcalendar/core/main.min.css');
+@import url('https://unpkg.com/@fullcalendar/daygrid/main.min.css');
+@import url('https://fonts.googleapis.com/css2?family=Lato:ital,wght@0,100;0,300;0,400;0,700;0,900;1,100;1,300;1,400;1,700;1,900&display=swap');
+
+a {
+  text-decoration: none;
+  color: unset;
+}
+
+:root {
+  --background: #ffffffc0;
+  --background_1: #ffffff;
+  --background_2: #ffffff;
+  --icon_1: #676b7b;
+  --main: #0157f8;
+  --maina: #0866ff;
+  --text: #1CB0F6;
+  --text_400: #676b7b;
+  --bienhoa_m: #ff4d4f;
+  --bienhoa_b: #ffffff;
+
+  --box: rgba(145, 158, 171, 0.2) 0px 0px 2px 0px, rgba(145, 158, 171, 0.12) 0px 12px 24px -4px;
+  --font_Roboto: "Roboto", sans-serif;
+}
+
+.Login {
+  font-family: var(--font_Lato) !important;
+  font-weight: 700;
+  font-size: 32px;
+  color: var(--main);
+  margin-bottom: 15px;
+}
+
+
+
+* {
+  padding: 0;
+  margin: 0;
+  font-family: "Roboto", sans-serif;
+}
+
+.flexCenter {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.box_wrap {
+  box-shadow: var(--box);
+  border-radius: 8px;
+  background-color: white;
+}
+
+.text_3 {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text)
+}
+
+.text_1 {
+  font-size: 24px;
+  font-weight: 600;
+  color: var(--text)
+}
+
+.text_1_m {
+  font-size: 24px;
+  font-weight: 400;
+  color: var(--text)
+}
+
+.text_1_s {
+  font-size: 24px;
+  font-weight: 500;
+  color: var(--text)
+}
+
+.text_3_m {
+  font-size: 16px;
+  font-weight: 400;
+  color: var(--text)
+}
+
+
+.text_4 {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text)
+}
+
+.text_4_m {
+  font-size: 14px;
+  font-weight: 400;
+  color: var(--text)
+}
+
+.text_2 {
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--text)
+}
+
+.text_2_m {
+  font-size: 20px;
+  font-weight: 400;
+  color: var(--text)
+}
+
+.text_5 {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text)
+}
+
+.ScrollMain::-webkit-scrollbar{
+  width: 0;
+}

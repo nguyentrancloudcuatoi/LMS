@@ -1,0 +1,286 @@
+'use client';
+
+import { useState, useEffect } from 'react';
+import { Typography, Button, Box, TextField, Select, MenuItem, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper, Checkbox, Grid } from '@mui/material';
+
+const TOKEN = '7c3afb790462432d924aef3f79a90b22';
+
+async function findAssignment(courseid) {
+  let url = 'https://learn.s4h.edu.vn/webservice/rest/server.php';
+  url += '?moodlewsrestformat=json';
+  url += '&wstoken=' + TOKEN;
+  url += '&wsfunction=mod_assign_get_assignments';
+  url += '&courseids[0]=' + courseid;
+  let response = await fetch(url, {
+    method: 'POST',
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+  });
+  let json = await response.json();
+  let course = json.courses[0];
+  return course.assignments;
+}
+
+async function findSubmissions(ids) {
+  let url = 'https://learn.s4h.edu.vn/webservice/rest/server.php';
+  url += '?moodlewsrestformat=json';
+  url += '&wstoken=' + TOKEN;
+  url += '&wsfunction=mod_assign_get_submissions';
+  for (let i = 0; i < ids.length; i++) {
+    let id = ids[i];
+    url += `&assignmentids[${i}]=${id}`;
+  }
+  let response = await fetch(url, {
+    method: 'POST',
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+  });
+  let json = await response.json();
+  let assignments = json.assignments;
+  let submissions = [];
+  assignments.forEach(assignment => {
+    assignment.submissions.forEach(submission => {
+      let file = submission.plugins
+        .find(plugin => plugin.type == 'file')
+        .fileareas[0].files[0];
+      submissions.push({ ...file, userid: submission.userid, assignmentid: assignment.assignmentid });
+    });
+  });
+  return submissions;
+}
+
+async function getUsersInfo(userIds) {
+  let url = 'https://learn.s4h.edu.vn/webservice/rest/server.php';
+  url += '?moodlewsrestformat=json';
+  url += '&wstoken=' + TOKEN;
+  url += '&wsfunction=core_user_get_users_by_field';
+  url += '&field=id';
+  userIds.forEach((id, index) => {
+    url += `&values[${index}]=${id}`;
+  });
+  let response = await fetch(url, {
+    method: 'POST',
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+  });
+  return await response.json();
+}
+
+
+export default function LessonPath() {
+  const [assignments, setAssignments] = useState([]);
+  const [submissions, setSubmissions] = useState([]);
+  const [selectedAssignmentId, setSelectedAssignmentId] = useState('');
+  const [userMap, setUserMap] = useState({});
+  const [assignmentMap, setAssignmentMap] = useState({});
+  const [fieldText, setFieldText] = useState('');
+  const [output, setOutput] = useState('');
+
+  const readFileUrl = async (url) => {
+    try {
+      const response = await fetch('/api/getDocUrl', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ fileUrl: url }),
+      });
+      if (!response.ok) {
+        throw new Error('Network response was not ok');
+      }
+      const data = await response.json();
+      return data.text
+    } catch (error) {
+      console.error('Error reading file:', error);
+    }
+  };
+
+  const handleSubmit = async () => {
+    try {
+      const validSubmissions = submissions.filter(submission =>
+        submission.fileurl &&
+        submission.userid &&
+        (submission.filename.endsWith('.doc') || submission.filename.endsWith('.docx'))
+      );
+      const fileUrls = validSubmissions.map(submission => submission.fileurl);
+      const userIds = validSubmissions.map(submission => submission.userid);
+      if (fileUrls.length === 0) return;
+
+      const responses = [];
+      for (let i = 0; i < fileUrls.length; i++) {
+        let fileDocUrl = await readFileUrl(fileUrls[i] + '?token=' + "7c3afb790462432d924aef3f79a90b22");
+        let prompt = `Nội dung cần chấm:
+        ${fileDocUrl}
+        Theo các yêu cầu như sau: ${fieldText}`;
+        let response = await fetch('/api/gemini', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ body: prompt }),
+        });
+        if (!response.ok) {
+          throw new Error('Không có gợi ý từ AI');
+        }
+        const data = await response.json();
+        if (data) {
+          responses.push(data);
+        }
+        await new Promise(resolve => setTimeout(resolve, Math.random() * 3000 + 7000));
+      }
+      responses.forEach((data, index) => {
+        const output = data.output || 'Không có gợi ý từ AI';
+        setOutput(prevOutput => ({
+          ...prevOutput,
+          [userIds[index]]: output
+        }));
+      });
+    } catch (error) {
+      console.error(error);
+    }
+  };
+
+  const handleFieldTextChange = (event) => {
+    setFieldText(event.target.value);
+  };
+
+  useEffect(() => {
+    async function fetchData() {
+      const courseid = 30;
+      const assignments = await findAssignment(courseid);
+      const assignmentMap = {};
+      assignments.forEach(assignment => {
+        assignmentMap[assignment.id] = assignment.name;
+      });
+      setAssignmentMap(assignmentMap);
+      setAssignments(assignments);
+
+      const assignmentids = assignments.map(assignment => assignment.id);
+      const submissions = await findSubmissions(assignmentids);
+      const userIds = [...new Set(submissions.map(submission => submission.userid))];
+      const userInfos = await getUsersInfo(userIds);
+      const userMap = {};
+      userInfos.forEach(userInfo => {
+        userMap[userInfo.id] = userInfo;
+      });
+      setUserMap(userMap);
+      setSubmissions(submissions);
+    }
+    fetchData();
+  }, []);
+
+
+  const handleAssignmentChange = (event) => {
+    setSelectedAssignmentId(event.target.value);
+  };
+
+
+  const renderTable = (filteredSubmissions) => {
+    return filteredSubmissions.map(submission => {
+      if (submission && submission.fileurl && submission.filename && submission.userid) {
+        if (submission.filename.endsWith('.docx') || submission.filename.endsWith('.doc')) {
+          const { fileurl, filename, userid, assignmentid } = submission;
+          const userInfo = userMap[userid];
+          const { firstname, lastname, email } = userInfo;
+          const assignmentName = assignmentMap[assignmentid];
+          return (
+            <TableRow key={`${userid}-${assignmentid}`}>
+              <TableCell><Checkbox /></TableCell>
+              <TableCell>{`${firstname} ${lastname}`}</TableCell>
+              <TableCell>{email}</TableCell>
+              <TableCell>{assignmentName}</TableCell>
+              <TableCell><a href={`${fileurl}?token=${TOKEN}`}>{filename}</a></TableCell>
+              <TableCell>
+                <TextField
+                  id={`comment-${userid}`}
+                  variant="outlined"
+                  fullWidth
+                  multiline
+                  rows={3}
+                  sx={{ width: '300px' }}
+                  value={output[userid] || ''} // Sử dụng value thay vì defaultValue
+                />
+              </TableCell>
+            </TableRow>
+          );
+        }
+      }
+      return null;
+    });
+  };
+
+
+  return (
+    <>
+      <Box sx={{ backgroundColor: 'white', borderRadius: 2, p: 2, boxShadow: 2, mt: 4, minWidth: '10%', width: 'calc(100% - 70px)', minHeight: '100px', height: "auto", mx: 'auto', marginLeft: '20px', display: 'flex', }}>
+        <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start' }}>
+          <TextField
+            label="Nhập tiêu chí"
+            variant="outlined"
+            fullWidth
+            multiline
+            rows={14}
+            sx={{ mb: 2, width: '500px', height: '350px' }}
+            value={fieldText}
+            onChange={handleFieldTextChange}
+          />
+          <Button variant="contained" color="primary" onClick={handleSubmit}>
+            Chấm điểm
+          </Button>
+        </Box>
+
+        <Box sx={{ display: 'flex', flexDirection: 'space-between', w: "100%", flex: 1, height: 'max-content' }}>
+          <Box sx={{ backgroundColor: '#f06292', borderRadius: 2, p: 2, width: '100%', color: 'white' }}>
+            <Typography variant="h6">Bài tập chưa được chấm</Typography>
+            <Typography variant="body1">An toàn nơi làm việc</Typography>
+            <Typography variant="h4">1</Typography>
+          </Box>
+          <Box sx={{ backgroundColor: '#ba68c8', borderRadius: 2, p: 2, width: '100%', color: 'white' }}>
+          </Box>
+          <Box sx={{ backgroundColor: '#4fc3f7', borderRadius: 2, p: 2, width: '100%', color: 'white' }}>
+          </Box>
+        </Box>
+      </Box>
+
+      {/*P2- Bảng chọn bài tập */}
+
+      <Box sx={{ backgroundColor: 'white', borderRadius: 2, p: 2, boxShadow: 2, mt: 4, minWidth: '10%', width: 'calc(100% - 70px)', minHeight: '800px', height: "auto", mx: 'auto', marginLeft: '20px' }}>
+        <Box sx={{ mt: 1, mb: 2, display: 'flex', alignItems: 'center' }}>
+          <Typography variant="h6" sx={{ mr: 1, }}>Chọn bài tập:</Typography>
+          <Select
+            value={selectedAssignmentId}
+            onChange={handleAssignmentChange}
+            displayEmpty
+            sx={{ backgroundColor: '#f5f5f5', borderRadius: '4px', width: '300px', height: '30px' }}
+          >
+            <MenuItem value="">Tất cả</MenuItem>
+            {assignments.map(assignment => (
+              <MenuItem key={assignment.id} value={assignment.id}>
+                {assignment.name}
+              </MenuItem>
+            ))}
+          </Select>
+        </Box>
+
+        {/* P3- Bảng chấm điểm */}
+
+        <TableContainer component={Paper} sx={{ boxShadow: 3 }}>
+          <Table>
+            <TableHead>
+              <TableRow>
+                <TableCell sx={{ maxWidth: '1px' }}><Checkbox /></TableCell>
+                <TableCell sx={{ fontWeight: 'bold', maxWidth: '150px' }}>TÊN SINH VIÊN</TableCell>
+                <TableCell sx={{ fontWeight: 'bold', maxWidth: '200px' }}>EMAIL</TableCell>
+                <TableCell sx={{ fontWeight: 'bold', maxWidth: '200px' }}>BÀI TẬP</TableCell>
+                <TableCell sx={{ fontWeight: 'bold', maxWidth: '150px' }}>FIlE BÀI TẬP</TableCell>
+                <TableCell sx={{ fontWeight: 'bold', maxWidth: '200px' }}>NHẬN XÉT</TableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {renderTable(submissions.filter(submission => selectedAssignmentId ? submission.assignmentid == selectedAssignmentId : true))}
+            </TableBody>
+          </Table>
+        </TableContainer>
+      </Box>
+    </>
+  );
+}
+
+
